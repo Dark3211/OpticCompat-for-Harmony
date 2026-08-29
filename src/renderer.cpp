@@ -17,11 +17,6 @@ namespace OpticCompat {
     static std::byte *find_chimera_end_scene_wrapper() noexcept {
 
         HMODULE chimera_module = GetModuleHandleW(L"strings.dll");
-
-        if(!chimera_module) {
-            chimera_module = GetModuleHandleW(L"chimera.dll");
-        }
-
         if(!chimera_module) {
             return nullptr;
         }
@@ -99,7 +94,7 @@ namespace OpticCompat {
                 const auto region_begin = reinterpret_cast<std::uintptr_t>(trampoline_info.BaseAddress);
                 const auto region_end = region_begin + static_cast<std::uintptr_t>(trampoline_info.RegionSize);
                 const auto trampoline_address = reinterpret_cast<std::uintptr_t>(trampoline);
-                if(trampoline_address > region_end || region_end - trampoline_address < 21) continue;
+                if(trampoline_address > region_end || region_end - trampoline_address < 16) continue;
 
                 if(trampoline[0] != 0xE8 ||
                    trampoline[5] != 0xFF ||
@@ -107,28 +102,43 @@ namespace OpticCompat {
                    trampoline[7] != 0xA8 ||
                    trampoline[8] != 0x00 ||
                    trampoline[9] != 0x00 ||
-                   trampoline[10] != 0x00 ||
-                   trampoline[11] != 0xE8 ||
-                   trampoline[16] != 0xE9) {
+                   trampoline[10] != 0x00) {
                     continue;
                 }
 
                 std::int32_t before_rel = 0;
-                std::int32_t after_rel = 0;
-                std::int32_t back_rel = 0;
                 std::memcpy(&before_rel, trampoline + 1, sizeof(before_rel));
-                std::memcpy(&after_rel, trampoline + 12, sizeof(after_rel));
-                std::memcpy(&back_rel, trampoline + 17, sizeof(back_rel));
-
                 auto *before_target = trampoline + 5 + before_rel;
-                auto *after_target = trampoline + 16 + after_rel;
-                auto *back_target = trampoline + 21 + back_rel;
 
-                if(!target_in_chimera(before_target) || !target_in_chimera(after_target)) {
+                if(!target_in_chimera(before_target)) {
                     continue;
                 }
 
-                if(back_target != site + 6) {
+                bool valid_trampoline = false;
+
+                if(trampoline[11] == 0xE9) {
+                    std::int32_t back_rel = 0;
+                    std::memcpy(&back_rel, trampoline + 12, sizeof(back_rel));
+                    auto *back_target = trampoline + 16 + back_rel;
+                    valid_trampoline = back_target == site + 6;
+                }
+                else if(region_end - trampoline_address >= 21 &&
+                        trampoline[11] == 0xE8 &&
+                        trampoline[16] == 0xE9) {
+                    std::int32_t after_rel = 0;
+                    std::int32_t back_rel = 0;
+                    std::memcpy(&after_rel, trampoline + 12, sizeof(after_rel));
+                    std::memcpy(&back_rel, trampoline + 17, sizeof(back_rel));
+
+                    auto *after_target = trampoline + 16 + after_rel;
+                    auto *back_target = trampoline + 21 + back_rel;
+
+                    valid_trampoline =
+                        target_in_chimera(after_target) &&
+                        back_target == site + 6;
+                }
+
+                if(!valid_trampoline) {
                     continue;
                 }
 
