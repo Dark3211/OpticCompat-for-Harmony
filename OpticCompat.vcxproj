@@ -1,0 +1,154 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup Label="ProjectConfigurations">
+    <ProjectConfiguration Include="Debug|Win32">
+      <Configuration>Debug</Configuration><Platform>Win32</Platform>
+    </ProjectConfiguration>
+    <ProjectConfiguration Include="Release|Win32">
+      <Configuration>Release</Configuration><Platform>Win32</Platform>
+    </ProjectConfiguration>
+  </ItemGroup>
+  <PropertyGroup Label="Globals">
+    <VCProjectVersion>17.0</VCProjectVersion>
+    <Keyword>Win32Proj</Keyword>
+    <ProjectGuid>{8D97F2CB-947D-4A66-84CC-5685822A8D16}</ProjectGuid>
+    <RootNamespace>OpticCompat</RootNamespace>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>true</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'" Label="Configuration">
+    <ConfigurationType>DynamicLibrary</ConfigurationType>
+    <UseDebugLibraries>false</UseDebugLibraries>
+    <PlatformToolset>v145</PlatformToolset>
+    <WholeProgramOptimization>true</WholeProgramOptimization>
+    <CharacterSet>Unicode</CharacterSet>
+  </PropertyGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.props" />
+  <ImportGroup Label="ExtensionSettings" />
+  <ImportGroup Label="Shared" />
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <ImportGroup Label="PropertySheets" Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <Import Project="$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props" Condition="exists('$(UserRootDir)\Microsoft.Cpp.$(Platform).user.props')" Label="LocalAppDataPlatform" />
+  </ImportGroup>
+  <PropertyGroup Label="UserMacros" />
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <TargetName>harmony</TargetName>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\obj\</IntDir>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <TargetName>harmony</TargetName>
+    <OutDir>$(SolutionDir)$(Configuration)\</OutDir>
+    <IntDir>$(Configuration)\obj\</IntDir>
+  </PropertyGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <RuntimeLibrary>MultiThreadedDebug</RuntimeLibrary>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\lua;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>d3d9.lib;gdiplus.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PreBuildEvent>
+      <Command>if not exist "$(ProjectDir)third_party\lua\lua.h" powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)prepare_dependencies.ps1"</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">
+    <ClCompile>
+      <WarningLevel>Level3</WarningLevel>
+      <FunctionLevelLinking>true</FunctionLevelLinking>
+      <IntrinsicFunctions>true</IntrinsicFunctions>
+      <SDLCheck>true</SDLCheck>
+      <PreprocessorDefinitions>WIN32_LEAN_AND_MEAN;NOMINMAX;_CRT_SECURE_NO_WARNINGS;NDEBUG;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <ConformanceMode>true</ConformanceMode>
+      <LanguageStandard>stdcpp20</LanguageStandard>
+      <LanguageStandard_C>stdc17</LanguageStandard_C>
+      <RuntimeLibrary>MultiThreaded</RuntimeLibrary>
+      <Optimization>MaxSpeed</Optimization>
+      <AdditionalIncludeDirectories>$(ProjectDir)src;$(ProjectDir)third_party\lua;%(AdditionalIncludeDirectories)</AdditionalIncludeDirectories>
+    </ClCompile>
+    <Link>
+      <SubSystem>Windows</SubSystem>
+      <EnableCOMDATFolding>true</EnableCOMDATFolding>
+      <OptimizeReferences>true</OptimizeReferences>
+      <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>d3d9.lib;gdiplus.lib;winmm.lib;%(AdditionalDependencies)</AdditionalDependencies>
+    </Link>
+    <PreBuildEvent>
+      <Command>if not exist "$(ProjectDir)third_party\lua\lua.h" powershell -NoProfile -ExecutionPolicy Bypass -File "$(ProjectDir)prepare_dependencies.ps1"</Command>
+    </PreBuildEvent>
+  </ItemDefinitionGroup>
+  <ItemGroup>
+    <ClCompile Include="src\dllmain.cpp" />
+    <ClCompile Include="src\log.cpp" />
+    <ClCompile Include="src\memory.cpp" />
+    <ClCompile Include="src\audio.cpp" />
+    <ClCompile Include="src\optic.cpp" />
+    <ClCompile Include="src\renderer.cpp" />
+    <ClCompile Include="src\multiplayer.cpp" />
+    <ClCompile Include="src\runtime.cpp" />
+    <ClCompile Include="src\lua_api.cpp" />
+    <ClCompile Include="src\lua_module.cpp" />
+    <ClCompile Include="third_party\lua\lapi.c" />
+    <ClCompile Include="third_party\lua\lauxlib.c" />
+    <ClCompile Include="third_party\lua\lbaselib.c" />
+    <ClCompile Include="third_party\lua\lcode.c" />
+    <ClCompile Include="third_party\lua\lcorolib.c" />
+    <ClCompile Include="third_party\lua\lctype.c" />
+    <ClCompile Include="third_party\lua\ldblib.c" />
+    <ClCompile Include="third_party\lua\ldebug.c" />
+    <ClCompile Include="third_party\lua\ldo.c" />
+    <ClCompile Include="third_party\lua\ldump.c" />
+    <ClCompile Include="third_party\lua\lfunc.c" />
+    <ClCompile Include="third_party\lua\lgc.c" />
+    <ClCompile Include="third_party\lua\linit.c" />
+    <ClCompile Include="third_party\lua\liolib.c" />
+    <ClCompile Include="third_party\lua\llex.c" />
+    <ClCompile Include="third_party\lua\lmathlib.c" />
+    <ClCompile Include="third_party\lua\lmem.c" />
+    <ClCompile Include="third_party\lua\loadlib.c" />
+    <ClCompile Include="third_party\lua\lobject.c" />
+    <ClCompile Include="third_party\lua\lopcodes.c" />
+    <ClCompile Include="third_party\lua\loslib.c" />
+    <ClCompile Include="third_party\lua\lparser.c" />
+    <ClCompile Include="third_party\lua\lstate.c" />
+    <ClCompile Include="third_party\lua\lstring.c" />
+    <ClCompile Include="third_party\lua\lstrlib.c" />
+    <ClCompile Include="third_party\lua\ltable.c" />
+    <ClCompile Include="third_party\lua\ltablib.c" />
+    <ClCompile Include="third_party\lua\ltm.c" />
+    <ClCompile Include="third_party\lua\lundump.c" />
+    <ClCompile Include="third_party\lua\lutf8lib.c" />
+    <ClCompile Include="third_party\lua\lvm.c" />
+    <ClCompile Include="third_party\lua\lzio.c" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\common.hpp" />
+    <ClInclude Include="src\log.hpp" />
+    <ClInclude Include="src\memory.hpp" />
+    <ClInclude Include="src\audio.hpp" />
+    <ClInclude Include="src\optic.hpp" />
+    <ClInclude Include="src\renderer.hpp" />
+    <ClInclude Include="src\multiplayer.hpp" />
+    <ClInclude Include="src\runtime.hpp" />
+    <ClInclude Include="src\lua_api.hpp" />
+  </ItemGroup>
+  <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
+  <ImportGroup Label="ExtensionTargets" />
+</Project>

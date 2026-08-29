@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <Filter Include="Source Files"><UniqueIdentifier>{96B7F44E-676F-4776-A95C-642A398691A1}</UniqueIdentifier></Filter>
+    <Filter Include="Header Files"><UniqueIdentifier>{B4464515-F623-4D52-97A1-E49E64B35CF6}</UniqueIdentifier></Filter>
+    <Filter Include="Lua 5.5.1"><UniqueIdentifier>{8DD8066E-851F-4A7C-A83C-D39508DAB446}</UniqueIdentifier></Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="src\dllmain.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\log.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\memory.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\audio.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\optic.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\renderer.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\multiplayer.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\runtime.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\lua_api.cpp"><Filter>Source Files</Filter></ClCompile>
+    <ClCompile Include="src\lua_module.cpp"><Filter>Source Files</Filter></ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="src\common.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\log.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\memory.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\audio.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\optic.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\renderer.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\multiplayer.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\runtime.hpp"><Filter>Header Files</Filter></ClInclude>
+    <ClInclude Include="src\lua_api.hpp"><Filter>Header Files</Filter></ClInclude>
+  </ItemGroup>
+</Project>
