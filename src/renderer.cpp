@@ -212,6 +212,110 @@ namespace OpticCompat {
         return true;
     }
 
+    static std::pair<std::uint32_t, std::uint32_t> process_window_resolution() noexcept {
+        const DWORD process_id = GetCurrentProcessId();
+
+        const auto window_size = [process_id](HWND window) noexcept
+            -> std::pair<std::uint32_t, std::uint32_t> {
+            if(!window || !IsWindowVisible(window)) return {0, 0};
+
+            DWORD window_process_id = 0;
+            GetWindowThreadProcessId(window, &window_process_id);
+            if(window_process_id != process_id) return {0, 0};
+
+            RECT rect{};
+            if(!GetClientRect(window, &rect)) return {0, 0};
+
+            const LONG width = rect.right - rect.left;
+            const LONG height = rect.bottom - rect.top;
+            if(width <= 0 || height <= 0) return {0, 0};
+
+            return {
+                static_cast<std::uint32_t>(width),
+                static_cast<std::uint32_t>(height)
+            };
+        };
+
+        const auto foreground = window_size(GetForegroundWindow());
+        if(foreground.first && foreground.second) return foreground;
+
+        struct Search {
+            DWORD process_id;
+            HWND window;
+            std::uint64_t area;
+        } search{process_id, nullptr, 0};
+
+        EnumWindows(
+            [](HWND window, LPARAM param) -> BOOL {
+                auto *search = reinterpret_cast<Search *>(param);
+                if(!search || !IsWindowVisible(window) ||
+                   GetWindow(window, GW_OWNER) != nullptr) {
+                    return TRUE;
+                }
+
+                DWORD window_process_id = 0;
+                GetWindowThreadProcessId(window, &window_process_id);
+                if(window_process_id != search->process_id) return TRUE;
+
+                RECT rect{};
+                if(!GetClientRect(window, &rect)) return TRUE;
+
+                const LONG width = rect.right - rect.left;
+                const LONG height = rect.bottom - rect.top;
+                if(width <= 0 || height <= 0) return TRUE;
+
+                const auto area =
+                    static_cast<std::uint64_t>(width) *
+                    static_cast<std::uint64_t>(height);
+
+                if(area > search->area) {
+                    search->area = area;
+                    search->window = window;
+                }
+                return TRUE;
+            },
+            reinterpret_cast<LPARAM>(&search)
+        );
+
+        return window_size(search.window);
+    }
+
+    void Renderer::capture_resolution(IDirect3DDevice9 *device) noexcept {
+        if(!device) return;
+
+        D3DVIEWPORT9 viewport{};
+        if(SUCCEEDED(device->GetViewport(&viewport)) &&
+           viewport.Width > 0 && viewport.Height > 0) {
+            width_.store(viewport.Width, std::memory_order_release);
+            height_.store(viewport.Height, std::memory_order_release);
+            return;
+        }
+
+        IDirect3DSurface9 *backbuffer = nullptr;
+        if(SUCCEEDED(device->GetBackBuffer(
+                0,
+                0,
+                D3DBACKBUFFER_TYPE_MONO,
+                &backbuffer)) &&
+           backbuffer) {
+            D3DSURFACE_DESC desc{};
+            const HRESULT result = backbuffer->GetDesc(&desc);
+            backbuffer->Release();
+
+            if(SUCCEEDED(result) && desc.Width > 0 && desc.Height > 0) {
+                width_.store(desc.Width, std::memory_order_release);
+                height_.store(desc.Height, std::memory_order_release);
+            }
+        }
+    }
+
+    std::pair<std::uint32_t, std::uint32_t> Renderer::resolution() const noexcept {
+        const auto width = width_.load(std::memory_order_acquire);
+        const auto height = height_.load(std::memory_order_acquire);
+        if(width > 0 && height > 0) return {width, height};
+        return process_window_resolution();
+    }
+
     bool Renderer::initialize() {
         if(gdiplus_token_ != 0) return true;
         Gdiplus::GdiplusStartupInput input;

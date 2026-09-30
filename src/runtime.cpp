@@ -164,28 +164,37 @@ namespace OpticCompat {
         return allow;
     }
 
-    void Runtime::dispatch_multiplayer_event(std::uint32_t value, std::uint32_t local_id,
+    bool Runtime::dispatch_multiplayer_event(std::uint32_t value, std::uint32_t local_id,
                                              std::uint32_t killer_id, std::uint32_t victim_id) noexcept {
-        if(!state_ || callback_event_.empty()) return;
+        if(!state_ || callback_event_.empty()) return true;
         const char *name = MultiplayerHooks::event_name(value);
-        if(!name) return;
+        if(!name) return true;
 
         const int base = lua_gettop(state_);
         lua_getglobal(state_, callback_event_.c_str());
         if(!lua_isfunction(state_, -1)) {
             lua_settop(state_, base);
-            return;
+            return true;
         }
+
         lua_pushstring(state_, name);
         lua_pushinteger(state_, static_cast<lua_Integer>(local_id));
         lua_pushinteger(state_, static_cast<lua_Integer>(killer_id));
         lua_pushinteger(state_, static_cast<lua_Integer>(victim_id));
-        if(!call_lua_callback(callback_event_, 4, 0)) lua_settop(state_, base);
-        else lua_settop(state_, base);
+
+        if(!call_lua_callback(callback_event_, 4, 1)) {
+            lua_settop(state_, base);
+            return true;
+        }
+
+        const bool allow = lua_toboolean(state_, -1) != 0;
+        lua_settop(state_, base);
+        return allow;
     }
 
     void Runtime::on_end_scene(IDirect3DDevice9 *device) noexcept {
         if(!state_) return;
+        renderer_.capture_resolution(device);
         store_.on_end_scene(device);
     }
 

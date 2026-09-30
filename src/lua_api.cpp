@@ -1,5 +1,6 @@
 #include "lua_api.hpp"
 #include "runtime.hpp"
+#include "memory.hpp"
 #include <cwctype>
 #include <cmath>
 #include <array>
@@ -11,6 +12,98 @@
 #include <windows.h>
 
 namespace OpticCompat::LuaApi {
+
+    static int get_resolution(lua_State *L) {
+        if(lua_gettop(L) != 0) {
+            return luaL_error(L, "invalid number of arguments in get_resolution");
+        }
+
+        const auto resolution = Runtime::instance().renderer().resolution();
+        if(resolution.first == 0 || resolution.second == 0) {
+            return 0;
+        }
+
+        lua_pushinteger(L, static_cast<lua_Integer>(resolution.first));
+        lua_pushinteger(L, static_cast<lua_Integer>(resolution.second));
+        return 2;
+    }
+
+    static std::optional<std::uint32_t>
+    first_person_weapon_object_id() noexcept {
+        static std::byte *site = []() noexcept -> std::byte * {
+            const Memory::Pattern pattern = {
+                0x8B, 0x0D, -1, -1, -1, -1,
+                0x53, 0x8A, 0x5C, 0x24, 0x08
+            };
+            return Memory::scan_unique(
+                pattern,
+                "optic first person data"
+            );
+        }();
+
+        if(!site || !Memory::is_readable(site + 2, sizeof(std::uint32_t))) {
+            return std::nullopt;
+        }
+
+        std::uint32_t storage_address = 0;
+        std::memcpy(
+            &storage_address,
+            site + 2,
+            sizeof(storage_address)
+        );
+        if(storage_address == 0) return std::nullopt;
+
+        auto **storage = reinterpret_cast<std::byte **>(
+            static_cast<std::uintptr_t>(storage_address)
+        );
+        if(!Memory::is_readable(storage, sizeof(*storage))) {
+            return std::nullopt;
+        }
+
+        std::byte *first_person = nullptr;
+        std::memcpy(&first_person, storage, sizeof(first_person));
+        if(!first_person ||
+           !Memory::is_readable(
+               first_person + 8,
+               sizeof(std::uint32_t))) {
+            return std::nullopt;
+        }
+
+        std::uint32_t weapon_object_id = 0xFFFFFFFFu;
+        std::memcpy(
+            &weapon_object_id,
+            first_person + 8,
+            sizeof(weapon_object_id)
+        );
+
+        if(weapon_object_id == 0 ||
+           weapon_object_id == 0xFFFFFFFFu) {
+            return std::nullopt;
+        }
+
+        return weapon_object_id;
+    }
+
+    static int get_first_person_weapon_object_id(lua_State *L) {
+        if(lua_gettop(L) != 0) {
+            return luaL_error(
+                L,
+                "invalid number of arguments in get_first_person_weapon_object_id"
+            );
+        }
+
+        const auto value = first_person_weapon_object_id();
+        if(!value) {
+            lua_pushnil(L);
+            return 1;
+        }
+
+        lua_pushinteger(
+            L,
+            static_cast<lua_Integer>(*value)
+        );
+        return 1;
+    }
 
     struct NativeDamageEvent {
         std::uint32_t effect_tag_id = 0xFFFFFFFFu;
@@ -130,49 +223,19 @@ namespace OpticCompat::LuaApi {
 #endif
 
     static std::uint8_t *find_native_damage_probe_site() noexcept {
-#if defined(_WIN32)
-        const HMODULE module = GetModuleHandleW(nullptr);
-        if(!module) return nullptr;
-
-        auto *base = reinterpret_cast<std::uint8_t *>(module);
-        const auto *dos =
-            reinterpret_cast<const IMAGE_DOS_HEADER *>(base);
-        if(dos->e_magic != IMAGE_DOS_SIGNATURE) return nullptr;
-
-        const auto *nt = reinterpret_cast<const IMAGE_NT_HEADERS *>(
-            base + dos->e_lfanew
-        );
-        if(nt->Signature != IMAGE_NT_SIGNATURE) return nullptr;
-
-        static constexpr std::uint8_t pattern[] = {
+        const Memory::Pattern pattern = {
+            0x81, 0xEC, 0x94, 0x00, 0x00, 0x00,
             0x8B, 0x84, 0x24, 0x9C, 0x00, 0x00, 0x00,
             0x25, 0xFF, 0xFF, 0x00, 0x00
         };
 
-        const IMAGE_SECTION_HEADER *section = IMAGE_FIRST_SECTION(nt);
-        for(unsigned i = 0; i < nt->FileHeader.NumberOfSections; ++i) {
-            if((section[i].Characteristics & IMAGE_SCN_MEM_EXECUTE) == 0) {
-                continue;
-            }
+        auto *function = Memory::scan_unique(
+            pattern,
+            "optic native damage"
+        );
+        if(!function) return nullptr;
 
-            const std::size_t virtual_size =
-                std::max<std::size_t>(
-                    section[i].Misc.VirtualSize,
-                    section[i].SizeOfRawData
-                );
-            if(virtual_size < sizeof(pattern)) continue;
-
-            auto *start = base + section[i].VirtualAddress;
-            for(std::size_t offset = 0;
-                offset + sizeof(pattern) <= virtual_size;
-                ++offset) {
-                if(std::memcmp(start + offset, pattern, sizeof(pattern)) == 0) {
-                    return start + offset;
-                }
-            }
-        }
-#endif
-        return nullptr;
+        return reinterpret_cast<std::uint8_t *>(function + 6);
     }
 
     static bool install_native_damage_probe() noexcept {
@@ -383,6 +446,32 @@ return false;
         return true;
     }
 
+    struct ImageBoundsCacheEntry {
+        std::filesystem::file_time_type write_time{};
+        std::uintmax_t file_size = 0;
+        UINT width = 0;
+        UINT height = 0;
+        UINT min_x = 0;
+        UINT min_y = 0;
+        UINT max_x_exclusive = 0;
+        UINT max_y_exclusive = 0;
+    };
+
+    static std::unordered_map<std::wstring, ImageBoundsCacheEntry>
+        image_bounds_cache;
+
+    static void push_image_bounds(
+        lua_State *L,
+        const ImageBoundsCacheEntry &entry
+    ) {
+        lua_pushinteger(L, static_cast<lua_Integer>(entry.width));
+        lua_pushinteger(L, static_cast<lua_Integer>(entry.height));
+        lua_pushinteger(L, static_cast<lua_Integer>(entry.min_x));
+        lua_pushinteger(L, static_cast<lua_Integer>(entry.min_y));
+        lua_pushinteger(L, static_cast<lua_Integer>(entry.max_x_exclusive));
+        lua_pushinteger(L, static_cast<lua_Integer>(entry.max_y_exclusive));
+    }
+
     static int get_image_content_bounds(lua_State *L) {
         if(lua_gettop(L) != 1) {
             return luaL_error(L, "invalid number of arguments in get_image_content_bounds");
@@ -391,6 +480,24 @@ return false;
         std::filesystem::path path;
         if(!resolve_existing(L, 1, path)) {
             return 0;
+        }
+
+        std::error_code time_ec;
+        const auto write_time =
+            std::filesystem::last_write_time(path, time_ec);
+        std::error_code size_ec;
+        const auto file_size =
+            std::filesystem::file_size(path, size_ec);
+        const std::wstring cache_key = path.native();
+
+        if(!time_ec && !size_ec) {
+            const auto cached = image_bounds_cache.find(cache_key);
+            if(cached != image_bounds_cache.end() &&
+               cached->second.write_time == write_time &&
+               cached->second.file_size == file_size) {
+                push_image_bounds(L, cached->second);
+                return 6;
+            }
         }
 
         Gdiplus::GdiplusStartupInput startup_input;
@@ -422,14 +529,40 @@ return false;
         UINT max_y = 0;
         bool found = false;
 
-        for(UINT y = 0; y < height; ++y) {
-            for(UINT x = 0; x < width; ++x) {
-                Gdiplus::Color color;
-                if(source.GetPixel(static_cast<INT>(x), static_cast<INT>(y), &color) != Gdiplus::Ok) {
-                    continue;
-                }
+        Gdiplus::Rect rect(
+            0,
+            0,
+            static_cast<INT>(width),
+            static_cast<INT>(height)
+        );
+        Gdiplus::BitmapData bitmap_data{};
+        if(source.LockBits(
+                &rect,
+                Gdiplus::ImageLockModeRead,
+                PixelFormat32bppARGB,
+                &bitmap_data
+            ) != Gdiplus::Ok) {
+            Gdiplus::GdiplusShutdown(gdiplus_token);
+            return luaL_error(
+                L,
+                "could not read image pixels in get_image_content_bounds"
+            );
+        }
 
-                if(color.GetAlpha() == 0) {
+        const auto *scan0 =
+            static_cast<const std::uint8_t *>(bitmap_data.Scan0);
+
+        for(UINT y = 0; y < height; ++y) {
+            const auto *row =
+                scan0 +
+                static_cast<std::ptrdiff_t>(y) *
+                bitmap_data.Stride;
+
+            for(UINT x = 0; x < width; ++x) {
+                const auto *pixel =
+                    row + static_cast<std::size_t>(x) * 4u;
+
+                if(pixel[3] == 0) {
                     continue;
                 }
 
@@ -447,6 +580,8 @@ return false;
             }
         }
 
+        source.UnlockBits(&bitmap_data);
+
         if(!found) {
             min_x = 0;
             min_y = 0;
@@ -456,12 +591,21 @@ return false;
 
         Gdiplus::GdiplusShutdown(gdiplus_token);
 
-        lua_pushinteger(L, static_cast<lua_Integer>(width));
-        lua_pushinteger(L, static_cast<lua_Integer>(height));
-        lua_pushinteger(L, static_cast<lua_Integer>(min_x));
-        lua_pushinteger(L, static_cast<lua_Integer>(min_y));
-        lua_pushinteger(L, static_cast<lua_Integer>(max_x + 1));
-        lua_pushinteger(L, static_cast<lua_Integer>(max_y + 1));
+        ImageBoundsCacheEntry result{};
+        result.write_time = write_time;
+        result.file_size = size_ec ? 0 : file_size;
+        result.width = width;
+        result.height = height;
+        result.min_x = min_x;
+        result.min_y = min_y;
+        result.max_x_exclusive = max_x + 1;
+        result.max_y_exclusive = max_y + 1;
+
+        if(!time_ec && !size_ec) {
+            image_bounds_cache[cache_key] = result;
+        }
+
+        push_image_bounds(L, result);
         return 6;
     }
 
@@ -1316,34 +1460,57 @@ return false;
         std::uint64_t weight_sum = 0;
         BYTE max_alpha = 0;
 
-        for(UINT y = 0; y < height; ++y) {
-            for(UINT x = 0; x < width; ++x) {
-                Gdiplus::Color color;
-                if(source.GetPixel(static_cast<INT>(x),
-                                   static_cast<INT>(y),
-                                   &color) != Gdiplus::Ok) {
-                    continue;
+        if(width > 0 && height > 0) {
+            Gdiplus::Rect rect(
+                0,
+                0,
+                static_cast<INT>(width),
+                static_cast<INT>(height)
+            );
+            Gdiplus::BitmapData bitmap_data{};
+
+            if(source.LockBits(
+                    &rect,
+                    Gdiplus::ImageLockModeRead,
+                    PixelFormat32bppARGB,
+                    &bitmap_data
+                ) == Gdiplus::Ok) {
+                const auto *scan0 =
+                    static_cast<const std::uint8_t *>(bitmap_data.Scan0);
+
+                for(UINT y = 0; y < height; ++y) {
+                    const auto *row =
+                        scan0 +
+                        static_cast<std::ptrdiff_t>(y) *
+                        bitmap_data.Stride;
+
+                    for(UINT x = 0; x < width; ++x) {
+                        const auto *pixel =
+                            row + static_cast<std::size_t>(x) * 4u;
+
+                        const BYTE b = pixel[0];
+                        const BYTE g = pixel[1];
+                        const BYTE r = pixel[2];
+                        const BYTE alpha = pixel[3];
+                        const BYTE intensity = std::max({r, g, b});
+
+                        if(alpha <= 8 || intensity <= 8) {
+                            continue;
+                        }
+
+                        const std::uint64_t weight =
+                            static_cast<std::uint64_t>(alpha) *
+                            static_cast<std::uint64_t>(intensity);
+
+                        sum_r += static_cast<std::uint64_t>(r) * weight;
+                        sum_g += static_cast<std::uint64_t>(g) * weight;
+                        sum_b += static_cast<std::uint64_t>(b) * weight;
+                        weight_sum += weight;
+                        max_alpha = std::max(max_alpha, alpha);
+                    }
                 }
 
-                const BYTE alpha = color.GetAlpha();
-                const BYTE r = color.GetRed();
-                const BYTE g = color.GetGreen();
-                const BYTE b = color.GetBlue();
-                const BYTE intensity = std::max({r, g, b});
-
-                if(alpha <= 8 || intensity <= 8) {
-                    continue;
-                }
-
-                const std::uint64_t weight =
-                    static_cast<std::uint64_t>(alpha) *
-                    static_cast<std::uint64_t>(intensity);
-
-                sum_r += static_cast<std::uint64_t>(r) * weight;
-                sum_g += static_cast<std::uint64_t>(g) * weight;
-                sum_b += static_cast<std::uint64_t>(b) * weight;
-                weight_sum += weight;
-                max_alpha = std::max(max_alpha, alpha);
+                source.UnlockBits(&bitmap_data);
             }
         }
 
@@ -2184,10 +2351,18 @@ return false;
             );
         }
 
+        struct GdiplusShutdownGuard {
+            ULONG_PTR token = 0;
+            ~GdiplusShutdownGuard() {
+                if(token != 0) {
+                    Gdiplus::GdiplusShutdown(token);
+                }
+            }
+        } shutdown_guard{gdiplus_token};
+
         Gdiplus::Bitmap source(source_path.c_str(), FALSE);
 
         if(source.GetLastStatus() != Gdiplus::Ok) {
-            Gdiplus::GdiplusShutdown(gdiplus_token);
             return luaL_error(
                 L,
                 "could not load hitmarker source image"
@@ -2291,7 +2466,6 @@ return false;
         );
 
         if(sheet.GetLastStatus() != Gdiplus::Ok) {
-            Gdiplus::GdiplusShutdown(gdiplus_token);
             return luaL_error(
                 L,
                 "could not create hitmarker FX sheet"
@@ -2611,29 +2785,6 @@ return false;
         auto &store =
             Runtime::instance().store();
 
-        std::filesystem::path cache_dir =
-            store.data_root() /
-            ".opticcompat" /
-            "generated_hitmarkers";
-
-        std::error_code ec;
-
-        std::filesystem::create_directories(
-            cache_dir,
-            ec
-        );
-
-        if(ec) {
-            Gdiplus::GdiplusShutdown(
-                gdiplus_token
-            );
-
-            return luaL_error(
-                L,
-                "could not create hitmarker FX cache directory"
-            );
-        }
-
         std::uint64_t hash =
             fnv1a_path_hash(
                 source_path.wstring()
@@ -2705,7 +2856,7 @@ return false;
             );
 
         const std::wstring name =
-            L"hfx_mixv8_native_status_" +
+            L"hfx_mixv9_memory_" +
             std::to_wstring(hash) +
             L"_e" +
             std::to_wstring(effect_kind) +
@@ -2726,44 +2877,88 @@ return false;
             L"_rgb" +
             std::to_wstring(override_r) + L"-" +
             std::to_wstring(override_g) + L"-" +
-            std::to_wstring(override_b) +
-            L".png";
+            std::to_wstring(override_b);
 
-        const auto generated_path =
-            cache_dir /
-            name;
+        graphics.Flush(Gdiplus::FlushIntentionSync);
 
-        CLSID png{};
+        const int texture_width =
+            frame_size * columns;
+        const int texture_height =
+            frame_size * rows;
 
-        if(!get_png_encoder_clsid(
-                png
-            ) ||
-           sheet.Save(
-                generated_path.c_str(),
-                &png,
-                nullptr
-            ) != Gdiplus::Ok) {
+        Gdiplus::Rect sheet_rect(
+            0,
+            0,
+            texture_width,
+            texture_height
+        );
 
-            Gdiplus::GdiplusShutdown(
-                gdiplus_token
-            );
+        Gdiplus::BitmapData sheet_data{};
 
+        if(sheet.LockBits(
+               &sheet_rect,
+               Gdiplus::ImageLockModeRead,
+               PixelFormat32bppARGB,
+               &sheet_data
+           ) != Gdiplus::Ok) {
             return luaL_error(
                 L,
-                "could not save hitmarker FX spritesheet"
+                "could not read hitmarker FX spritesheet"
             );
         }
 
-        Gdiplus::GdiplusShutdown(
-            gdiplus_token
+        const std::size_t row_bytes =
+            static_cast<std::size_t>(
+                texture_width
+            ) * 4u;
+
+        std::vector<std::byte> pixels(
+            row_bytes *
+            static_cast<std::size_t>(
+                texture_height
+            )
         );
+
+        const auto *source_pixels =
+            static_cast<const std::byte *>(
+                sheet_data.Scan0
+            );
+
+        for(int y = 0; y < texture_height; ++y) {
+            const auto *src =
+                source_pixels +
+                static_cast<std::ptrdiff_t>(y) *
+                    sheet_data.Stride;
+
+            auto *dst =
+                pixels.data() +
+                static_cast<std::size_t>(y) *
+                    row_bytes;
+
+            std::memcpy(
+                dst,
+                src,
+                row_bytes
+            );
+        }
+
+        sheet.UnlockBits(&sheet_data);
+
+        std::string cache_key;
+        cache_key.reserve(name.size());
+        for(const wchar_t ch : name) {
+            cache_key.push_back(
+                static_cast<char>(ch)
+            );
+        }
 
         try {
             const auto handle =
-                store.create_sprite(
-                    generated_path,
+                store.create_memory_sprite(
+                    std::move(cache_key),
                     frame_size,
                     frame_size,
+                    std::move(pixels),
                     static_cast<std::size_t>(
                         rows
                     ),
@@ -2870,6 +3065,15 @@ return false;
             );
         }
 
+        struct GdiplusShutdownGuard {
+            ULONG_PTR token = 0;
+            ~GdiplusShutdownGuard() {
+                if(token != 0) {
+                    Gdiplus::GdiplusShutdown(token);
+                }
+            }
+        } shutdown_guard{gdiplus_token};
+
         Gdiplus::Bitmap bitmap(
             width,
             height,
@@ -2877,7 +3081,6 @@ return false;
         );
 
         if(bitmap.GetLastStatus() != Gdiplus::Ok) {
-            Gdiplus::GdiplusShutdown(gdiplus_token);
             return luaL_error(
                 L,
                 "could not create damage number bitmap"
@@ -2974,66 +3177,74 @@ return false;
             &fill
         );
 
-        auto &store = Runtime::instance().store();
+        graphics.Flush(Gdiplus::FlushIntentionSync);
 
-        std::filesystem::path cache_dir =
-            store.data_root() /
-            ".opticcompat" /
-            "generated_hitmarkers";
+        Gdiplus::Rect bitmap_rect(
+            0,
+            0,
+            width,
+            height
+        );
+        Gdiplus::BitmapData bitmap_data{};
 
-        std::error_code ec;
-        std::filesystem::create_directories(cache_dir, ec);
-
-        if(ec) {
-            Gdiplus::GdiplusShutdown(gdiplus_token);
+        if(bitmap.LockBits(
+               &bitmap_rect,
+               Gdiplus::ImageLockModeRead,
+               PixelFormat32bppARGB,
+               &bitmap_data
+           ) != Gdiplus::Ok) {
             return luaL_error(
                 L,
-                "could not create damage-number cache directory"
+                "could not read damage-number bitmap"
             );
         }
+
+        const std::size_t row_bytes =
+            static_cast<std::size_t>(width) * 4u;
+        std::vector<std::byte> pixels(
+            row_bytes * static_cast<std::size_t>(height)
+        );
+
+        const auto *source =
+            static_cast<const std::byte *>(bitmap_data.Scan0);
+
+        for(int y = 0; y < height; ++y) {
+            const auto *src =
+                source +
+                static_cast<std::ptrdiff_t>(y) *
+                    bitmap_data.Stride;
+            auto *dst =
+                pixels.data() +
+                static_cast<std::size_t>(y) * row_bytes;
+            std::memcpy(dst, src, row_bytes);
+        }
+
+        bitmap.UnlockBits(&bitmap_data);
 
         const int scale_key =
             static_cast<int>(std::lround(scale * 100.0f));
 
-        const std::wstring file_name =
-            L"damage_v3_palette_" +
-            std::to_wstring(damage_points) +
-            L"_c" +
-            std::to_wstring(critical ? 1 : 0) +
-            L"_s" +
-            std::to_wstring(scale_key) +
-            L"_rgb" +
-            std::to_wstring(color_r) + L"-" +
-            std::to_wstring(color_g) + L"-" +
-            std::to_wstring(color_b) +
-            L".png";
+        std::string cache_key =
+            "damage_v4|" +
+            std::to_string(damage_points) +
+            "|c=" +
+            std::to_string(critical ? 1 : 0) +
+            "|s=" +
+            std::to_string(scale_key) +
+            "|rgb=" +
+            std::to_string(color_r) + "," +
+            std::to_string(color_g) + "," +
+            std::to_string(color_b);
 
-        const auto generated_path =
-            cache_dir / file_name;
-
-        CLSID png_clsid{};
-
-        if(!get_png_encoder_clsid(png_clsid) ||
-           bitmap.Save(
-               generated_path.c_str(),
-               &png_clsid,
-               nullptr
-           ) != Gdiplus::Ok) {
-            Gdiplus::GdiplusShutdown(gdiplus_token);
-            return luaL_error(
-                L,
-                "could not save damage-number PNG"
-            );
-        }
-
-        Gdiplus::GdiplusShutdown(gdiplus_token);
+        auto &store = Runtime::instance().store();
 
         try {
             const auto handle =
-                store.create_sprite(
-                    generated_path,
+                store.create_memory_sprite(
+                    std::move(cache_key),
                     width,
-                    height
+                    height,
+                    std::move(pixels)
                 );
 
             lua_pushinteger(
@@ -3491,6 +3702,8 @@ return false;
 
     void push_optic_table(lua_State *L) {
         lua_newtable(L);
+        set_function(L, "get_resolution", get_resolution);
+        set_function(L, "get_first_person_weapon_object_id", get_first_person_weapon_object_id);
         set_function(L, "create_animation", create_animation);
         set_function(L, "set_animation_property", set_animation_property);
         set_function(L, "create_sprite", create_sprite);

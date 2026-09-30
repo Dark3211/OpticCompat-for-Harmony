@@ -18,7 +18,7 @@ namespace OpticCompat {
 
         bool set_callback(std::string_view type, std::string function_name);
         bool dispatch_multiplayer_sound(std::uint32_t value) noexcept;
-        void dispatch_multiplayer_event(std::uint32_t value, std::uint32_t local_id,
+        bool dispatch_multiplayer_event(std::uint32_t value, std::uint32_t local_id,
                                         std::uint32_t killer_id, std::uint32_t victim_id) noexcept;
         void on_end_scene(IDirect3DDevice9 *device) noexcept;
 

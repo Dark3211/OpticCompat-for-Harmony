@@ -6,11 +6,71 @@
 extern "C" void *g_opticcompat_event_original = nullptr;
 extern "C" void *g_opticcompat_sound_trampoline = nullptr;
 
-extern "C" void __cdecl opticcompat_dispatch_event(std::uint32_t event_value,
-                                                    std::uint32_t killer_id,
-                                                    std::uint32_t victim_id,
-                                                    std::uint32_t local_id) {
-    OpticCompat::Runtime::instance().dispatch_multiplayer_event(event_value, local_id, killer_id, victim_id);
+extern "C" int __cdecl opticcompat_dispatch_event(std::uint32_t event_value,
+                                                   std::uint32_t eax_player,
+                                                   std::uint32_t ecx_player,
+                                                   std::uint32_t local_id) {
+    constexpr std::uint32_t null_id = 0xFFFFFFFFu;
+
+    std::uint32_t killer_id = null_id;
+    std::uint32_t victim_id = null_id;
+
+    switch(event_value) {
+        case 1:
+        case 2:
+        case 3:
+        case 6:
+            victim_id =
+                ecx_player != null_id
+                    ? ecx_player
+                    : eax_player;
+            break;
+
+        case 4:
+        case 5:
+            killer_id = ecx_player;
+            victim_id = eax_player;
+            break;
+
+        case 8:
+            killer_id =
+                local_id != null_id
+                    ? local_id
+                    : eax_player;
+            victim_id = ecx_player;
+            break;
+
+        case 7:
+        case 9:
+        case 10:
+        case 11:
+        case 12:
+            killer_id = local_id;
+            break;
+
+        case 33:
+        case 34:
+        case 35:
+        case 38:
+        case 40:
+        case 41:
+        case 42:
+        case 43:
+        case 44:
+            killer_id = ecx_player;
+            victim_id = eax_player;
+            break;
+
+        default:
+            break;
+    }
+
+    return OpticCompat::Runtime::instance().dispatch_multiplayer_event(
+        event_value,
+        local_id,
+        killer_id,
+        victim_id
+    ) ? 1 : 0;
 }
 
 extern "C" int __cdecl opticcompat_dispatch_sound(std::uint32_t sound_value) {
@@ -28,9 +88,13 @@ extern "C" __declspec(naked) void opticcompat_event_bridge() {
         push edx
         call opticcompat_dispatch_event
         add esp, 16
+        mov dword ptr [esp + 1Ch], eax
         popad
         popfd
-        call dword ptr [g_opticcompat_event_original]
+        test eax, eax
+        jz cancel_event
+        jmp dword ptr [g_opticcompat_event_original]
+    cancel_event:
         ret
     }
 }
@@ -62,10 +126,14 @@ namespace OpticCompat {
         log_line("Multiplayer event hook requires Win32/x86.");
         return false;
 #else
-        const Memory::Pattern pattern = {0x52, 0x50, 0xE8, -1, -1, -1, -1, 0x83, 0xC4, 0x10, 0x5F};
+        const Memory::Pattern pattern = {
+            0x6A, 0x00, 0x51, 0x52, 0x50,
+            0xE8, -1, -1, -1, -1,
+            0x83, 0xC4, 0x10
+        };
         auto *sig = Memory::scan_unique(pattern, "optic multiplayer event");
         if(!sig) return false;
-        auto *call = sig + 2;
+        auto *call = sig + 5;
         if(std::to_integer<unsigned char>(call[0]) != 0xE8) return false;
         std::int32_t rel = 0;
         std::memcpy(&rel, call + 1, sizeof(rel));

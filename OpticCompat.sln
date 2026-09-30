@@ -4,6 +4,8 @@ VisualStudioVersion = 18.9.12120.119 stable
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "OpticCompat", "OpticCompat.vcxproj", "{8D97F2CB-947D-4A66-84CC-5685822A8D16}"
 EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "LuaSyntaxCheck", "LuaSyntaxCheck.vcxproj", "{30BC46B0-97D2-4B75-908F-67BEE5A8DA8A}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x86 = Debug|x86
@@ -14,6 +16,10 @@ Global
 		{8D97F2CB-947D-4A66-84CC-5685822A8D16}.Debug|x86.Build.0 = Debug|Win32
 		{8D97F2CB-947D-4A66-84CC-5685822A8D16}.Release|x86.ActiveCfg = Release|Win32
 		{8D97F2CB-947D-4A66-84CC-5685822A8D16}.Release|x86.Build.0 = Release|Win32
+		{30BC46B0-97D2-4B75-908F-67BEE5A8DA8A}.Debug|x86.ActiveCfg = Debug|Win32
+		{30BC46B0-97D2-4B75-908F-67BEE5A8DA8A}.Debug|x86.Build.0 = Debug|Win32
+		{30BC46B0-97D2-4B75-908F-67BEE5A8DA8A}.Release|x86.ActiveCfg = Release|Win32
+		{30BC46B0-97D2-4B75-908F-67BEE5A8DA8A}.Release|x86.Build.0 = Release|Win32
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

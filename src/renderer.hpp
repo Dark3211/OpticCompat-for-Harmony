@@ -8,6 +8,8 @@ namespace OpticCompat {
         bool ensure_hook();
         bool hooked() const noexcept { return hooked_.load(); }
         void start_retry_worker();
+        void capture_resolution(IDirect3DDevice9 *device) noexcept;
+        std::pair<std::uint32_t, std::uint32_t> resolution() const noexcept;
 
     private:
         static HRESULT WINAPI present_hook(IDirect3DDevice9 *device,
@@ -20,5 +22,7 @@ namespace OpticCompat {
         std::atomic<bool> retry_started_{false};
         IDirect3DDevice9 **device_storage_ = nullptr;
         ULONG_PTR gdiplus_token_ = 0;
+        std::atomic<std::uint32_t> width_{0};
+        std::atomic<std::uint32_t> height_{0};
     };
 }

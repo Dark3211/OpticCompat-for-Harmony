@@ -35,15 +35,19 @@ namespace OpticCompat {
         void set_property(Property property, Curve curve, float value) noexcept;
         Transform transform() const noexcept { return transform_; }
         void play() noexcept;
+        void play(std::chrono::steady_clock::time_point now) noexcept;
         void stop() noexcept { playing_ = false; }
         bool is_playing() const noexcept { return playing_; }
         long time_left() const noexcept;
+        long time_left(std::chrono::steady_clock::time_point now) const noexcept;
         void apply(SpriteState &state) const noexcept;
+        void apply(SpriteState &state, std::chrono::steady_clock::time_point now) const noexcept;
         static Property property_from_string(std::string_view value) noexcept;
         static Curve curve_from_preset(std::string_view value, bool &valid) noexcept;
 
     private:
         float progress() const noexcept;
+        float progress(std::chrono::steady_clock::time_point now) const noexcept;
         long duration_ = 0;
         bool playing_ = false;
         std::chrono::steady_clock::time_point started_{};
@@ -56,18 +60,39 @@ namespace OpticCompat {
         Sprite(std::filesystem::path path, int frame_width, int frame_height,
                std::size_t rows = 1, std::size_t columns = 1,
                std::size_t frames = 1, std::size_t fps = 0);
+        Sprite(std::vector<std::byte> pixels,
+               int frame_width,
+               int frame_height,
+               std::size_t rows = 1,
+               std::size_t columns = 1,
+               std::size_t frames = 1,
+               std::size_t fps = 0);
         ~Sprite();
         Sprite(const Sprite &) = delete;
         Sprite &operator=(const Sprite &) = delete;
 
         bool load(IDirect3DDevice9 *device);
         void unload() noexcept;
-        bool draw(IDirect3DDevice9 *device, const SpriteState &state) const noexcept;
+        static void prepare_device(IDirect3DDevice9 *device) noexcept;
+        bool draw(IDirect3DDevice9 *device,
+                  const SpriteState &state,
+                  IDirect3DVertexBuffer9 *&vertex_buffer,
+                  std::size_t &vertex_cursor,
+                  bool &stream_bound,
+                  IDirect3DBaseTexture9 *&bound_texture) const noexcept;
+        bool matches(const std::filesystem::path &path,
+                     int frame_width,
+                     int frame_height,
+                     std::size_t rows,
+                     std::size_t columns,
+                     std::size_t frames,
+                     std::size_t fps) const noexcept;
         std::size_t frame_count() const noexcept { return frames_; }
         std::size_t fps() const noexcept { return fps_; }
 
     private:
         std::filesystem::path path_;
+        std::vector<std::byte> pixels_;
         int frame_width_ = 0;
         int frame_height_ = 0;
         int texture_width_ = 0;
@@ -107,6 +132,7 @@ namespace OpticCompat {
 
     class OpticStore {
     public:
+        ~OpticStore();
         void reset(std::filesystem::path data_root);
         const std::filesystem::path &data_root() const noexcept { return data_root_; }
 
@@ -115,6 +141,14 @@ namespace OpticCompat {
         std::size_t create_sprite(const std::filesystem::path &path, int width, int height,
                                   std::size_t rows = 1, std::size_t columns = 1,
                                   std::size_t frames = 1, std::size_t fps = 0);
+        std::size_t create_memory_sprite(std::string key,
+                                         int width,
+                                         int height,
+                                         std::vector<std::byte> pixels,
+                                         std::size_t rows = 1,
+                                         std::size_t columns = 1,
+                                         std::size_t frames = 1,
+                                         std::size_t fps = 0);
         std::size_t create_render_queue(SpriteState state, float rotation, std::size_t max_renders,
                                         long duration, bool temporal = false);
         RenderQueue *render_queue(std::size_t handle) noexcept;
@@ -134,11 +168,22 @@ namespace OpticCompat {
 
     private:
         void process_queue(RenderQueue &queue, IDirect3DDevice9 *device) noexcept;
+        bool capture_render_state(IDirect3DDevice9 *device) noexcept;
+        bool ensure_sprite_vertex_buffer(IDirect3DDevice9 *device) noexcept;
+        void release_render_state() noexcept;
         std::filesystem::path data_root_;
         std::vector<Animation> animations_;
         std::vector<std::unique_ptr<Sprite>> sprites_;
+        std::unordered_map<std::wstring, std::size_t> file_sprites_;
+        std::unordered_map<std::string, std::size_t> memory_sprites_;
         std::vector<std::unique_ptr<RenderQueue>> queues_;
         std::vector<std::unique_ptr<Sound>> sounds_;
         std::vector<std::unique_ptr<AudioEngine>> audio_engines_;
+        IDirect3DDevice9 *render_device_ = nullptr;
+        IDirect3DStateBlock9 *render_state_ = nullptr;
+        IDirect3DVertexBuffer9 *sprite_vertex_buffer_ = nullptr;
+        std::size_t sprite_vertex_cursor_ = 0;
+        bool sprite_vertex_stream_bound_ = false;
+        IDirect3DBaseTexture9 *sprite_bound_texture_ = nullptr;
     };
 }

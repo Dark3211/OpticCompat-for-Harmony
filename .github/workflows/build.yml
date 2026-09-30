@@ -1,0 +1,28 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: microsoft/setup-msbuild@v2
+      - name: Build Release x86
+        run: msbuild OpticCompat.sln /m /p:Configuration=Release /p:Platform=x86
+      - name: Validate optic.lua
+        run: .\\Release\\luac.exe -p optic.lua
+      - name: Prepare package
+        shell: powershell
+        run: |
+          New-Item -ItemType Directory -Force -Path package | Out-Null
+          Copy-Item .\\Release\\harmony.dll .\\package\\harmony.dll
+          Copy-Item .\\optic.lua .\\package\\optic.lua
+      - name: Upload Harmony package
+        uses: actions/upload-artifact@v4
+        with:
+          name: harmony-${{ github.sha }}
+          path: package/*
